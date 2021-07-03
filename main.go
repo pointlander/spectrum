@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -52,6 +53,13 @@ func main() {
 	}
 	defer input.Close()
 
+	type Statistic struct {
+		Sum float64
+		N   int
+	}
+
+	statistics := make(map[int]Statistic)
+
 	values := make(plotter.XYs, 0, 1024)
 	reader := bufio.NewReader(input)
 	line, err := reader.ReadString('\n')
@@ -59,22 +67,33 @@ func main() {
 		if !strings.HasPrefix(line, ";") {
 			parts := space.Split(strings.TrimSpace(line), -1)
 			if len(parts) == int(MeasureTypeCount) {
-				if parts[MeasureTypeDate] == "20030225.5" {
-					minWavelength, err := strconv.ParseFloat(parts[MeasureTypeMinWavelength], 64)
-					if err != nil {
-						panic(err)
-					}
-					irradiance, err := strconv.ParseFloat(parts[MeasureTypeIrradiance], 64)
-					if err != nil {
-						panic(err)
-					}
-					fmt.Println(minWavelength, irradiance)
-					values = append(values, plotter.XY{X: minWavelength, Y: irradiance})
+				minWavelength, err := strconv.ParseFloat(parts[MeasureTypeMinWavelength], 64)
+				if err != nil {
+					panic(err)
 				}
+				irradiance, err := strconv.ParseFloat(parts[MeasureTypeIrradiance], 64)
+				if err != nil {
+					panic(err)
+				}
+				statistic, found := statistics[int(minWavelength)]
+				if !found {
+					statistics[int(minWavelength)] = Statistic{}
+				}
+				statistic.Sum += irradiance
+				statistic.N++
+				statistics[int(minWavelength)] = statistic
 			}
 		}
 		line, err = reader.ReadString('\n')
 	}
+
+	for minWavelength, statistic := range statistics {
+		values = append(values, plotter.XY{X: float64(minWavelength), Y: statistic.Sum / float64(statistic.N)})
+	}
+	sort.Slice(values, func(i, j int) bool {
+		return values[i].X < values[j].X
+	})
+	fmt.Println(len(values))
 
 	p := plot.New()
 	p.Title.Text = "Spectrum"
