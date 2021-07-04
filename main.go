@@ -7,12 +7,14 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"math/cmplx"
 	"os"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/mjibson/go-dsp/fft"
 	"gonum.org/v1/plot"
 	"gonum.org/v1/plot/plotter"
 	"gonum.org/v1/plot/vg"
@@ -54,12 +56,12 @@ func main() {
 	defer input.Close()
 
 	type Statistic struct {
-		Sum float64
-		N   int
+		Sum    float64
+		N      int
+		Values []float64
 	}
 
-	statistics := make(map[int]Statistic)
-
+	statistics, count, previous := make(map[int]Statistic), 0, ""
 	values := make(plotter.XYs, 0, 1024)
 	reader := bufio.NewReader(input)
 	line, err := reader.ReadString('\n')
@@ -67,6 +69,11 @@ func main() {
 		if !strings.HasPrefix(line, ";") {
 			parts := space.Split(strings.TrimSpace(line), -1)
 			if len(parts) == int(MeasureTypeCount) {
+				if previous != parts[MeasureTypeDate] {
+					previous = parts[MeasureTypeDate]
+					count++
+				}
+
 				minWavelength, err := strconv.ParseFloat(parts[MeasureTypeMinWavelength], 64)
 				if err != nil {
 					panic(err)
@@ -81,6 +88,9 @@ func main() {
 				}
 				statistic.Sum += irradiance
 				statistic.N++
+				for i := len(statistic.Values); i < count; i++ {
+					statistic.Values = append(statistic.Values, irradiance)
+				}
 				statistics[int(minWavelength)] = statistic
 			}
 		}
@@ -105,5 +115,25 @@ func main() {
 	err = p.Save(8*vg.Inch, 8*vg.Inch, "spectrum.png")
 	if err != nil {
 		panic(err)
+	}
+
+	for key, value := range statistics {
+		frequency := fft.FFTReal(value.Values)
+		values = values[:0]
+		for i, f := range frequency {
+			values = append(values, plotter.XY{X: float64(i), Y: cmplx.Abs(f)})
+		}
+
+		p = plot.New()
+		p.Title.Text = "Spectrum"
+		histogram, err = plotter.NewHistogram(values, len(values))
+		if err != nil {
+			panic(err)
+		}
+		p.Add(histogram)
+		err = p.Save(8*vg.Inch, 8*vg.Inch, fmt.Sprintf("frequency_%d.png", key))
+		if err != nil {
+			panic(err)
+		}
 	}
 }
