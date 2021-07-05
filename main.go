@@ -56,12 +56,14 @@ func main() {
 	defer input.Close()
 
 	type Statistic struct {
-		Sum    float64
-		N      int
-		Values []float64
+		Sum           float64
+		N             int
+		Values        []float64
+		MinWavelength float64
+		MaxWavelength float64
 	}
 
-	statistics, count, previous := make(map[int]Statistic), 0, ""
+	statistics, count, previous := make(map[string]Statistic), 0, ""
 	values := make(plotter.XYs, 0, 1024)
 	reader := bufio.NewReader(input)
 	line, err := reader.ReadString('\n')
@@ -78,27 +80,39 @@ func main() {
 				if err != nil {
 					panic(err)
 				}
+				maxWavelength, err := strconv.ParseFloat(parts[MeasureTypeMaxWavelength], 64)
+				if err != nil {
+					panic(err)
+				}
 				irradiance, err := strconv.ParseFloat(parts[MeasureTypeIrradiance], 64)
 				if err != nil {
 					panic(err)
 				}
-				statistic, found := statistics[int(minWavelength)]
+				key := fmt.Sprintf("%f-%f", minWavelength, maxWavelength)
+				statistic, found := statistics[key]
 				if !found {
-					statistics[int(minWavelength)] = Statistic{}
+					statistics[key] = Statistic{}
+					statistic.MinWavelength = minWavelength
+					statistic.MaxWavelength = maxWavelength
 				}
 				statistic.Sum += irradiance
 				statistic.N++
 				for i := len(statistic.Values); i < count; i++ {
 					statistic.Values = append(statistic.Values, irradiance)
 				}
-				statistics[int(minWavelength)] = statistic
+				statistics[key] = statistic
 			}
 		}
 		line, err = reader.ReadString('\n')
 	}
 
-	for minWavelength, statistic := range statistics {
-		values = append(values, plotter.XY{X: float64(minWavelength), Y: statistic.Sum / float64(statistic.N)})
+	for key, statistic := range statistics {
+		length := len(statistic.Values)
+		for i := length; i < count; i++ {
+			statistic.Values = append(statistic.Values, statistic.Values[length-1])
+		}
+		fmt.Println(key, statistic.N, len(statistic.Values))
+		values = append(values, plotter.XY{X: float64(statistic.MinWavelength), Y: statistic.Sum / float64(statistic.N)})
 	}
 	sort.Slice(values, func(i, j int) bool {
 		return values[i].X < values[j].X
@@ -131,7 +145,7 @@ func main() {
 			panic(err)
 		}
 		p.Add(histogram)
-		err = p.Save(8*vg.Inch, 8*vg.Inch, fmt.Sprintf("frequency_%d.png", key))
+		err = p.Save(8*vg.Inch, 8*vg.Inch, fmt.Sprintf("plots/frequency_%s.png", key))
 		if err != nil {
 			panic(err)
 		}
