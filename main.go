@@ -111,6 +111,7 @@ func main() {
 		for i := length; i < count; i++ {
 			statistic.Values = append(statistic.Values, statistic.Values[length-1])
 		}
+		statistics[key] = statistic
 		fmt.Println(key, statistic.N, len(statistic.Values))
 		values = append(values, plotter.XY{X: float64(statistic.MinWavelength), Y: statistic.Sum / float64(statistic.N)})
 	}
@@ -131,11 +132,13 @@ func main() {
 		panic(err)
 	}
 
+	sum := make([]float64, len(statistics["0.000000-1.000000"].Values))
 	for key, value := range statistics {
 		frequency := fft.FFTReal(value.Values)
 		values = values[:0]
 		for i, f := range frequency {
 			values = append(values, plotter.XY{X: float64(i), Y: cmplx.Abs(f)})
+			sum[i] += cmplx.Abs(f)
 		}
 
 		p = plot.New()
@@ -149,5 +152,39 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
+	}
+
+	type Value struct {
+		Index int
+		Value float64
+	}
+	v := make([]Value, 0, 1024)
+
+	values = values[:0]
+	for i, f := range sum {
+		values = append(values, plotter.XY{X: float64(i), Y: f / float64(len(sum))})
+		v = append(v, Value{
+			Index: i,
+			Value: f / float64(len(sum)),
+		})
+	}
+
+	p = plot.New()
+	p.Title.Text = "Spectrum"
+	histogram, err = plotter.NewHistogram(values, len(values))
+	if err != nil {
+		panic(err)
+	}
+	p.Add(histogram)
+	err = p.Save(8*vg.Inch, 8*vg.Inch, "frequency.png")
+	if err != nil {
+		panic(err)
+	}
+
+	sort.Slice(v, func(i, j int) bool {
+		return v[i].Value < v[j].Value
+	})
+	for _, value := range v {
+		fmt.Println(value.Index, value.Value)
 	}
 }
