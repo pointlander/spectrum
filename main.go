@@ -132,14 +132,27 @@ func main() {
 		panic(err)
 	}
 
-	sum := make([]float64, len(statistics["0.000000-1.000000"].Values))
+	type Value struct {
+		Index int
+		Value float64
+	}
+
+	ranks, length := make(map[string][]Value), len(statistics["0.000000-1.000000"].Values)
+	sum := make([]float64, length)
 	for key, value := range statistics {
 		frequency := fft.FFTReal(value.Values)
 		values = values[:0]
+		frequencies := make([]Value, len(frequency))
 		for i, f := range frequency {
 			values = append(values, plotter.XY{X: float64(i), Y: cmplx.Abs(f)})
+			frequencies[i].Index = i
+			frequencies[i].Value = cmplx.Abs(f)
 			sum[i] += cmplx.Abs(f)
 		}
+		sort.Slice(frequencies, func(i, j int) bool {
+			return frequencies[i].Value > frequencies[j].Value
+		})
+		ranks[key] = frequencies
 
 		p = plot.New()
 		p.Title.Text = "Spectrum"
@@ -154,12 +167,14 @@ func main() {
 		}
 	}
 
-	type Value struct {
-		Index int
-		Value float64
+	averages := make([]float64, length)
+	for _, value := range ranks {
+		for i, rank := range value {
+			averages[rank.Index] += float64(i)
+		}
 	}
-	v := make([]Value, 0, 1024)
 
+	v := make([]Value, 0, 1024)
 	values = values[:0]
 	for i, f := range sum {
 		values = append(values, plotter.XY{X: float64(i), Y: f / float64(len(sum))})
@@ -183,6 +198,20 @@ func main() {
 
 	sort.Slice(v, func(i, j int) bool {
 		return v[i].Value < v[j].Value
+	})
+	for _, value := range v {
+		fmt.Println(value.Index, value.Value)
+	}
+
+	v = v[:0]
+	for i, average := range averages {
+		v = append(v, Value{
+			Index: i,
+			Value: average / float64(length),
+		})
+	}
+	sort.Slice(v, func(i, j int) bool {
+		return v[i].Value > v[j].Value
 	})
 	for _, value := range v {
 		fmt.Println(value.Index, value.Value)
